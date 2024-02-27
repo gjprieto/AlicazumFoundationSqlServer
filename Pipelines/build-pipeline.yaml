@@ -1,0 +1,72 @@
+trigger: none
+
+pool: 'Local'
+
+stages:
+
+- stage: 'Build'
+  variables:
+    BUILD_CONFIG: 'Release'
+    SOLUTION: 'Alicazum.Foundation.sln'
+
+  jobs:
+  - job:
+    pool: 'Local'
+
+    workspace:
+      clean: all
+
+    steps:
+    - task: UseDotNet@2
+      displayName: Setup .NET 8.0
+      inputs:
+        packageType: "sdk"
+        version: "8.0.x"
+
+    - task: DotNetCoreCLI@2
+      displayName: Restore project dependencies
+      inputs:
+        command: 'restore'
+        projects: '$(SOLUTION)'
+
+    - task: DotNetCoreCLI@2
+      displayName: Build project
+      inputs:
+        command: 'build'
+        projects: '$(SOLUTION)'
+        arguments: '/p:Configuration=$(BUILD_CONFIG)'
+        
+    - task: DotNetCoreCLI@2
+      displayName: Run tests
+      inputs:
+        command: 'test'
+        projects: '$(SOLUTION)'
+        arguments: '/p:Configuration=$(BUILD_CONFIG)'
+
+    - task: CopyFiles@2
+      displayName: Copy packages to pipeline artifacts
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)'
+        Contents: |
+          **/*.nupkg
+          **/*.snupkg
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/artifacts'
+
+    - task: DotNetCoreCLI@2
+      displayName: "Publish nuget packages to internal feed"
+      inputs:
+        command: 'push'
+        feedsToUse: 'select'
+        packagesToPush: '$(Build.ArtifactStagingDirectory)/artifacts/**/*.nupkg'
+        nuGetFeedType: 'internal'
+        vstsFeed: 'alicazum'
+        publishVstsFeed: 'alicazum'
+
+# If publishing to internal NuGet feed gives 403 then:
+#   1. Go to your Azure Artifacts page
+#   2. Select the "Feed Settings" button, then select the "Permissions" tab
+#   3. Select "Add users/groups"
+#   4. In the User/Group box, type [ProjectName] Build Service (where [ProjectName] is the name of the Azure 
+#      DevOps project containing the pipeline you're trying to push from) and select the corresponding group 
+#      that appears in the dropdown
+#   5. Set the Role to Contributor. Then select Save
